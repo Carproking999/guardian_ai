@@ -877,8 +877,7 @@ class _LiveChatScreenState extends State<LiveChatScreen> {
     });
 
     final reply = await askGemini(text);
-      
-final reply = await _aiService.sendMessage(text);
+
     setState(() {
       _messages.add({'role': 'ai', 'text': reply});
       _busy = false;
