@@ -1131,9 +1131,6 @@ class _TranslateScreenState extends State<TranslateScreen> {
             const SizedBox(height: 16),
           ],
         ),
-      ),
-    );
+      );
   }
 }
-
-16
