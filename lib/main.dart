@@ -17,6 +17,7 @@ import 'package:network_info_plus/network_info_plus.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'welcome_robot.dart';
 
 const String geminiApiKey = String.fromEnvironment('GEMINI_API_KEY');
 
@@ -39,8 +40,21 @@ Future<void> main() async {
   runApp(const GuardianApp());
 }
 
-class GuardianApp extends StatelessWidget {
+class GuardianApp extends StatefulWidget {
   const GuardianApp({super.key});
+
+  @override
+  State<GuardianApp> createState() => _GuardianAppState();
+}
+
+class _GuardianAppState extends State<GuardianApp> {
+  bool _showWelcome = true;
+
+  void _finishWelcome() {
+    setState(() {
+      _showWelcome = false;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -52,7 +66,9 @@ class GuardianApp extends StatelessWidget {
         primarySwatch: Colors.red,
         scaffoldBackgroundColor: const Color(0xFF0D0D0D),
       ),
-      home: const LockGate(),
+      home: _showWelcome
+          ? WelcomeRobotScreen(onFinished: _finishWelcome)
+          : const LockGate(),
     );
   }
 }
