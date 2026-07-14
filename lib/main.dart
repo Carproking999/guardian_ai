@@ -1,4 +1,4 @@
-uimport 'dart:async';
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -735,5 +735,4 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
-}
 }
