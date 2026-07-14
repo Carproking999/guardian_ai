@@ -202,7 +202,7 @@ class _GuardHomeState extends State<GuardHome> {
 
   final AudioRecorder _audioRecorder = AudioRecorder();
   final FlutterTts _tts = FlutterTts();
-    final AIService _aiService = AIService();
+  final AIService _aiService = AIService();
   NoiseMeter? _noiseMeter;
   StreamSubscription<NoiseReading>? _noiseSubscription;
 
