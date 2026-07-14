@@ -202,6 +202,7 @@ class _GuardHomeState extends State<GuardHome> {
 
   final AudioRecorder _audioRecorder = AudioRecorder();
   final FlutterTts _tts = FlutterTts();
+    final AIService _aiService = AIService();
   NoiseMeter? _noiseMeter;
   StreamSubscription<NoiseReading>? _noiseSubscription;
 
@@ -876,7 +877,8 @@ class _LiveChatScreenState extends State<LiveChatScreen> {
     });
 
     final reply = await askGemini(text);
-
+      
+final reply = await _aiService.sendMessage(text);
     setState(() {
       _messages.add({'role': 'ai', 'text': reply});
       _busy = false;
