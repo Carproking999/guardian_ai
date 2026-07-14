@@ -1,4 +1,4 @@
-import 'dart:async';
+uimport 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -602,7 +602,7 @@ class _GuardHomeState extends State<GuardHome> {
         ),
       ),
     );
-  }// ---------------- GALLERY SCREEN ----------------
+  }}// ---------------- GALLERY SCREEN ----------------
 class GalleryScreen extends StatefulWidget {
   const GalleryScreen({super.key});
   @override
