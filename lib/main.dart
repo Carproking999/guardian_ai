@@ -14,6 +14,11 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:network_info_plus/network_info_plus.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+
+const String geminiApiKey = String.fromEnvironment('GEMINI_API_KEY');
 
 List<CameraDescription> cameras = [];
 final FlutterLocalNotificationsPlugin notifications =
@@ -157,7 +162,9 @@ class _LockGateState extends State<LockGate> {
       ),
     );
   }
-}// ---------------- MAIN GUARD SCREEN ----------------
+}
+
+// ---------------- MAIN GUARD SCREEN ----------------
 class GuardHome extends StatefulWidget {
   const GuardHome({super.key});
 
@@ -336,7 +343,9 @@ class _GuardHomeState extends State<GuardHome> {
       _lastTrigger = now;
       _triggerCapture();
     }
-  }Future<void> _triggerCapture() async {
+  }
+
+  Future<void> _triggerCapture() async {
     setState(() {
       _status = "Sound detected! Capturing...";
       _eventCount++;
@@ -504,6 +513,22 @@ class _GuardHomeState extends State<GuardHome> {
         backgroundColor: Colors.black,
         actions: [
           IconButton(
+            icon: const Icon(Icons.mic),
+            tooltip: 'Live AI Chat',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const LiveChatScreen()),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.translate),
+            tooltip: 'Live Translate',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const TranslateScreen()),
+            ),
+          ),
+          IconButton(
             icon: const Icon(Icons.photo_library),
             onPressed: () => Navigator.push(
               context,
@@ -602,7 +627,10 @@ class _GuardHomeState extends State<GuardHome> {
         ),
       ),
     );
-  }}// ---------------- GALLERY SCREEN ----------------
+  }
+}
+
+// ---------------- GALLERY SCREEN ----------------
 class GalleryScreen extends StatefulWidget {
   const GalleryScreen({super.key});
   @override
@@ -736,3 +764,376 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 }
+
+// ---------------- GEMINI HELPER ----------------
+Future<String> askGemini(String prompt) async {
+  if (geminiApiKey.isEmpty) {
+    return "Error: API key set nahi hai.";
+  }
+  final url = Uri.parse(
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=$geminiApiKey',
+  );
+  try {
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'contents': [
+          {
+            'parts': [
+              {'text': prompt}
+            ]
+          }
+        ]
+      }),
+    );
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return data['candidates'][0]['content']['parts'][0]['text'] ??
+          "Koi jawab nahi mila.";
+    } else {
+      return "Error: ${response.statusCode} — ${response.body}";
+    }
+  } catch (e) {
+    return "Connection error: $e";
+  }
+}
+
+// ---------------- LIVE AI CHAT SCREEN ----------------
+class LiveChatScreen extends StatefulWidget {
+  const LiveChatScreen({super.key});
+  @override
+  State<LiveChatScreen> createState() => _LiveChatScreenState();
+}
+
+class _LiveChatScreenState extends State<LiveChatScreen> {
+  final stt.SpeechToText _speech = stt.SpeechToText();
+  final FlutterTts _tts = FlutterTts();
+  bool _listening = false;
+  bool _busy = false;
+  String _heard = "";
+  List<Map<String, String>> _messages = [];
+
+  String _language = "hi-IN";
+
+  @override
+  void initState() {
+    super.initState();
+    _tts.setLanguage(_language);
+  }
+
+  Future<void> _startListening() async {
+    final available = await _speech.initialize();
+    if (!available) {
+      _showSnack("Speech recognition available nahi hai.");
+      return;
+    }
+    setState(() {
+      _listening = true;
+      _heard = "";
+    });
+    _speech.listen(
+      localeId: _language,
+      onResult: (result) {
+        setState(() {
+          _heard = result.recognizedWords;
+        });
+        if (result.finalResult) {
+          _handleFinalSpeech(result.recognizedWords);
+        }
+      },
+    );
+  }
+
+  Future<void> _stopListening() async {
+    await _speech.stop();
+    setState(() => _listening = false);
+  }
+
+  Future<void> _handleFinalSpeech(String text) async {
+    if (text.trim().isEmpty) return;
+    await _stopListening();
+    setState(() {
+      _busy = true;
+      _messages.add({'role': 'user', 'text': text});
+    });
+
+    final reply = await askGemini(text);
+
+    setState(() {
+      _messages.add({'role': 'ai', 'text': reply});
+      _busy = false;
+    });
+
+    await _tts.setLanguage(_language);
+    await _tts.speak(reply);
+  }
+
+  void _showSnack(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  @override
+  void dispose() {
+    _speech.stop();
+    _tts.stop();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Live AI Chat"),
+        actions: [
+          DropdownButton<String>(
+            value: _language,
+            dropdownColor: Colors.black,
+            underline: const SizedBox(),
+            items: const [
+              DropdownMenuItem(value: "hi-IN", child: Text("Hindi")),
+              DropdownMenuItem(value: "ur-PK", child: Text("Urdu")),
+              DropdownMenuItem(value: "en-US", child: Text("English")),
+            ],
+            onChanged: (v) {
+              if (v != null) setState(() => _language = v);
+            },
+          ),
+          const SizedBox(width: 12),
+        ],
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.all(12),
+              itemCount: _messages.length,
+              itemBuilder: (context, index) {
+                final msg = _messages[index];
+                final isUser = msg['role'] == 'user';
+                return Align(
+                  alignment:
+                      isUser ? Alignment.centerRight : Alignment.centerLeft,
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(vertical: 4),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: isUser ? Colors.red[900] : Colors.grey[800],
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(msg['text'] ?? ''),
+                  ),
+                );
+              },
+            ),
+          ),
+          if (_busy) const LinearProgressIndicator(),
+          if (_heard.isNotEmpty && _listening)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                _heard,
+                style: const TextStyle(color: Colors.grey),
+              ),
+            ),
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: GestureDetector(
+              onTap: _listening ? _stopListening : _startListening,
+              child: CircleAvatar(
+                radius: 32,
+                backgroundColor: _listening ? Colors.red : Colors.grey[700],
+                child: Icon(
+                  _listening ? Icons.stop : Icons.mic,
+                  color: Colors.white,
+                  size: 30,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------- LIVE TRANSLATE SCREEN ----------------
+class TranslateScreen extends StatefulWidget {
+  const TranslateScreen({super.key});
+  @override
+  State<TranslateScreen> createState() => _TranslateScreenState();
+}
+
+class _TranslateScreenState extends State<TranslateScreen> {
+  final stt.SpeechToText _speech = stt.SpeechToText();
+  final FlutterTts _tts = FlutterTts();
+  bool _listening = false;
+  bool _busy = false;
+
+  String _fromLang = "ur-PK";
+  String _toLang = "en-US";
+
+  String _originalText = "";
+  String _translatedText = "";
+
+  final Map<String, String> _langNames = {
+    "hi-IN": "Hindi",
+    "ur-PK": "Urdu",
+    "en-US": "English",
+  };
+
+  Future<void> _startListening() async {
+    final available = await _speech.initialize();
+    if (!available) {
+      _showSnack("Speech recognition available nahi hai.");
+      return;
+    }
+    setState(() {
+      _listening = true;
+      _originalText = "";
+      _translatedText = "";
+    });
+    _speech.listen(
+      localeId: _fromLang,
+      onResult: (result) {
+        setState(() {
+          _originalText = result.recognizedWords;
+        });
+        if (result.finalResult) {
+          _translate(result.recognizedWords);
+        }
+      },
+    );
+  }
+
+  Future<void> _stopListening() async {
+    await _speech.stop();
+    setState(() => _listening = false);
+  }
+
+  Future<void> _translate(String text) async {
+    if (text.trim().isEmpty) return;
+    await _stopListening();
+    setState(() => _busy = true);
+
+    final fromName = _langNames[_fromLang];
+    final toName = _langNames[_toLang];
+    final prompt =
+        "Translate this $fromName text to $toName. Reply with ONLY the translation, nothing else: \"$text\"";
+
+    final result = await askGemini(prompt);
+
+    setState(() {
+      _translatedText = result.trim();
+      _busy = false;
+    });
+
+    await _tts.setLanguage(_toLang);
+    await _tts.speak(_translatedText);
+  }
+
+  void _swapLanguages() {
+    setState(() {
+      final temp = _fromLang;
+      _fromLang = _toLang;
+      _toLang = temp;
+      _originalText = "";
+      _translatedText = "";
+    });
+  }
+
+  void _showSnack(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  @override
+  void dispose() {
+    _speech.stop();
+    _tts.stop();
+    super.dispose();
+  }
+
+  Widget _langDropdown(String value, ValueChanged<String?> onChanged) {
+    return DropdownButton<String>(
+      value: value,
+      dropdownColor: Colors.grey[900],
+      items: _langNames.entries
+          .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value)))
+          .toList(),
+      onChanged: onChanged,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text("Live Translate")),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _langDropdown(_fromLang, (v) {
+                  if (v != null) setState(() => _fromLang = v);
+                }),
+                IconButton(
+                  icon: const Icon(Icons.swap_horiz),
+                  onPressed: _swapLanguages,
+                ),
+                _langDropdown(_toLang, (v) {
+                  if (v != null) setState(() => _toLang = v);
+                }),
+              ],
+            ),
+            const SizedBox(height: 24),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.grey[850],
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                _originalText.isEmpty ? "Bolne ke liye mic dabayein..." : _originalText,
+                style: const TextStyle(fontSize: 16),
+              ),
+            ),
+            const SizedBox(height: 16),
+            if (_busy) const LinearProgressIndicator(),
+            const SizedBox(height: 16),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.red[900],
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                _translatedText.isEmpty ? "Translation yahan aayega" : _translatedText,
+                style: const TextStyle(fontSize: 16),
+              ),
+            ),
+            const Spacer(),
+            GestureDetector(
+              onTap: _listening ? _stopListening : _startListening,
+              child: CircleAvatar(
+                radius: 32,
+                backgroundColor: _listening ? Colors.red : Colors.grey[700],
+                child: Icon(
+                  _listening ? Icons.stop : Icons.mic,
+                  color: Colors.white,
+                  size: 30,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+16
